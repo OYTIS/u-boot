@@ -238,6 +238,8 @@ static uint32_t rev_scheme;
 static uint32_t rev_type;
 static const struct rpi_model *model;
 
+uint64_t serial;
+
 #ifdef CONFIG_ARM64
 static struct mm_region bcm2837_mem_map[] = {
 	{
@@ -381,8 +383,8 @@ static void set_serial_number(void)
 		return;
 	}
 
-	snprintf(serial_string, sizeof(serial_string), "%016llx",
-		 msg->get_board_serial.body.resp.serial);
+	serial = msg->get_board_serial.body.resp.serial;
+	snprintf(serial_string, sizeof(serial_string), "%016llx", serial);
 	env_set("serial#", serial_string);
 }
 
@@ -475,6 +477,29 @@ void *board_fdt_blob_setup(void)
 	return (void *)fw_dtb_pointer;
 }
 
+static int ft_add_revision_info(void *blob) {
+	int off;
+	int ret;
+
+	off = fdt_subnode_offset(blob, 0, "system");
+
+	if (off < 0) {
+		off = fdt_add_subnode(blob, 0, "system");
+		if (off < 0)
+			return -1;
+	}
+
+	ret = fdt_setprop_u64(blob, off, "linux,serial", serial);
+	if (ret < 0)
+		return -1;
+
+	ret = fdt_setprop_u32(blob, off, "linux,revision", revision);
+	if (ret < 0)
+		return -1;
+
+	return 0;
+}
+
 int ft_board_setup(void *blob, bd_t *bd)
 {
 	/*
@@ -483,6 +508,8 @@ int ft_board_setup(void *blob, bd_t *bd)
 	 * node exists for the "real" graphics driver.
 	 */
 	lcd_dt_simplefb_add_node(blob);
+
+	ft_add_revision_info(blob);
 
 #ifdef CONFIG_EFI_LOADER
 	/* Reserve the spin table */
